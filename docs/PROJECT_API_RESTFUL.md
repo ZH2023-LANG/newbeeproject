@@ -57,6 +57,15 @@
 - 后台验证码：`verifyCode`
 - 商城验证码：`mallVerifyCode`
 
+### 3.4 Spring Session（Redis）托管
+
+- 当前项目已启用：`spring.session.store-type=redis`
+- Session 命名空间：`spring:session:newbee-mall`
+- Redis 连接配置：`spring.data.redis.*`
+- 会话超时：`server.servlet.session.timeout=120m`
+- 序列化：`springSessionDefaultRedisSerializer`（`GenericJackson2JsonRedisSerializer`）
+- 验证码会话值：已改为字符串存储（不再把 `ShearCaptcha` 对象直接放入 Session）
+
 ## 4. 通用返回格式
 
 ### 4.1 通用 JSON 包装
@@ -1620,65 +1629,52 @@
 - 从现代安全角度看，**单独 MD5 并不够安全**
 - 更推荐使用 `BCrypt`、`Argon2`、`PBKDF2` 这种带盐的密码方案
 
-### 12.8 这个项目是如何使用 `spring-session-core` 的
+### 12.8 这个项目是如何使用 `spring-session-core` 的（已实现）
 
-依赖声明在 [pom.xml](E:/J2EE/newbee-mall-spring-boot-3.x/newbee-mall-spring-boot-3.x/pom.xml)：
+当前项目已完成 Spring Session 落地，采用的是 **Spring Session + Redis**。
 
-```xml
-<dependency>
-    <groupId>org.springframework.session</groupId>
-    <artifactId>spring-session-core</artifactId>
-</dependency>
-```
+依赖层（已更新）：
 
-但是，结合当前代码和配置来看，这个项目 **并没有真正把 Spring Session 完整启用成“外部会话管理方案”**。
+- `spring-boot-starter-data-redis`
+- `spring-session-data-redis`
 
-我检查到的结论是：
+见 [pom.xml](E:/J2EE/newbee-mall-spring-boot-3.x/newbee-mall-spring-boot-3.x/pom.xml)。
 
-1. 代码里没有看到 `@EnableSpringHttpSession`
-2. 没有看到 `SessionRepository` Bean 配置
-3. 没有看到 Redis Session、JDBC Session、Mongo Session 等存储配置
-4. `application.properties` 里也没有 `spring.session.*` 配置
-5. 控制器和拦截器全部直接使用的是 `jakarta.servlet.http.HttpSession`
+配置层（已更新）：
 
-这说明当前项目的真实状态更接近于：
+- `spring.session.store-type=redis`
+- `spring.session.redis.namespace=spring:session:newbee-mall`
+- `spring.session.redis.flush-mode=on_save`
+- `server.servlet.session.timeout=120m`
+- `spring.data.redis.host/port/password/database`
 
-- **写法上**：使用 `HttpSession`
-- **运行上**：更像标准 Servlet 容器 Session
-- **存储上**：大概率仍由内嵌 Tomcat 在内存里管理
+见 [application.properties](E:/J2EE/newbee-mall-spring-boot-3.x/newbee-mall-spring-boot-3.x/src/main/resources/application.properties)。
 
-### 12.9 为什么说“它引入了依赖，但没有真正用完整 Spring Session 能力”
+序列化层（已更新）：
 
-很多初学者容易把这两件事混为一谈：
+- 新增 `springSessionDefaultRedisSerializer`
+- 使用 `GenericJackson2JsonRedisSerializer`
 
-#### 情况 A：只是引入依赖
+见 [SessionRedisConfig.java](E:/J2EE/newbee-mall-spring-boot-3.x/newbee-mall-spring-boot-3.x/src/main/java/ltd/newbee/mall/config/SessionRedisConfig.java)。
 
-这相当于：
+验证码会话（已更新）：
 
-- 你把一个工具箱搬进屋里了
-- 但没有把工具真正装到机器上开始工作
+- 验证码由“对象存 Session”改为“字符串存 Session”
+- 目的是提高 Redis Session 的序列化稳定性
 
-#### 情况 B：真正启用 Spring Session
+相关代码：
 
-通常至少还要补这些内容之一：
+- [CommonController.java](E:/J2EE/newbee-mall-spring-boot-3.x/newbee-mall-spring-boot-3.x/src/main/java/ltd/newbee/mall/controller/common/CommonController.java)
+- [AdminController.java](E:/J2EE/newbee-mall-spring-boot-3.x/newbee-mall-spring-boot-3.x/src/main/java/ltd/newbee/mall/controller/admin/AdminController.java)
+- [PersonalController.java](E:/J2EE/newbee-mall-spring-boot-3.x/newbee-mall-spring-boot-3.x/src/main/java/ltd/newbee/mall/controller/mall/PersonalController.java)
 
-- 配置 Redis 作为 Session 存储
-- 或配置 JDBC 把 Session 存进数据库
-- 或显式创建 `SessionRepository`
-- 或使用 Spring Boot 对 Spring Session 的自动配置能力
+说明：
 
-当前项目没有这些证据，所以不能说它已经实现了：
+- 业务代码仍使用 `HttpSession` API，这不是问题
+- Spring Session 的关键是“底层存储”已切换到 Redis
+- 所以写法可保持不变，但会话管理能力已升级
 
-- 分布式 Session
-- Session 共享
-- Session 持久化到 Redis/数据库
-
-更准确的说法应该是：
-
-- **项目依赖里包含了 `spring-session-core`**
-- **但从现有代码看，登录与会话仍然主要靠原生 `HttpSession` 完成**
-
-### 12.10 小白可以这样理解整个登录过程
+### 12.9 小白可以这样理解整个登录过程
 
 你可以把它想成一个小区门禁系统：
 
@@ -1698,37 +1694,29 @@
   - 后台放 `loginUser`、`loginUserId`
   - 商城放 `newBeeMallUser`
 
-### 12.11 当前实现的优点和局限
+### 12.10 当前实现的优点和局限
 
 #### 优点
 
 - 实现简单
 - 对单机项目很容易理解
 - 适合教学和入门
+- Session 已托管到 Redis，重启后会话更稳
+- 为多实例部署提供会话共享能力
 
 #### 局限
 
-- Session 主要在当前服务实例内存里
-- 如果以后做多台服务器，登录态可能无法天然共享
-- 服务重启后，内存 Session 往往会失效
+- 仍依赖 Redis 可用性与网络可达性
+- 生产环境建议增加 Redis 高可用和监控
 - 单独使用 MD5 做密码摘要，安全性偏弱
 
-### 12.12 如果以后要真正用 Spring Session，通常怎么改
+### 12.11 如何验证改造成功
 
-如果以后你们想“真正使用 Spring Session 管理会话”，最常见的方向是改成 Redis Session。
+建议至少通过以下验证：
 
-大致会做这些事情：
+1. 登录后，Redis 出现 `spring:session:newbee-mall:*` 键
+2. 应用重启后，不关闭浏览器仍保持登录态
+3. 登录验证码正确/错误分支都正常
+4. 退出登录后，受保护页面会重新要求登录
 
-1. 引入 `spring-session-data-redis`
-2. 配置 Redis 连接
-3. 增加 `spring.session.store-type=redis` 或对应自动配置
-4. 让 Session 存到 Redis，而不是只放在当前 Tomcat 内存
-
-这样做之后，好处是：
-
-- 多台应用服务器可以共享登录态
-- 应用重启后，Session 不一定立刻丢失
-- 更适合线上部署
-
-但这已经超出当前项目现状了。**就这个仓库现在的代码来说，它还没有走到这一步。**
-
+以上通过即可判定 Spring Session 改造生效。
