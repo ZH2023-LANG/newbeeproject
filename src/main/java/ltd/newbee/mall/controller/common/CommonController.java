@@ -36,7 +36,7 @@ public class CommonController {
         ShearCaptcha shearCaptcha= CaptchaUtil.createShearCaptcha(150, 30, 4, 2);
 
         // 验证码存入session
-        httpServletRequest.getSession().setAttribute("verifyCode", shearCaptcha);
+        httpServletRequest.getSession().setAttribute("verifyCode", shearCaptcha.getCode());
 
         // 输出图片流
         shearCaptcha.write(httpServletResponse.getOutputStream());
@@ -52,7 +52,7 @@ public class CommonController {
         ShearCaptcha shearCaptcha= CaptchaUtil.createShearCaptcha(110, 40, 4, 2);
 
         // 验证码存入session
-        httpServletRequest.getSession().setAttribute(Constants.MALL_VERIFY_CODE_KEY, shearCaptcha);
+        httpServletRequest.getSession().setAttribute(Constants.MALL_VERIFY_CODE_KEY, shearCaptcha.getCode());
 
         // 输出图片流
         shearCaptcha.write(httpServletResponse.getOutputStream());
